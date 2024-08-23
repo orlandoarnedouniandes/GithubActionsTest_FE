@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  main-pr-release-job:
+    name: Main PR Release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main'
+    steps:
+      - name: Set Git user identity
+        run: |
+          git config --global user.email "o.arnedoc@uniandes.com"
+          git config --global user.name "Orlando Arnedo"
+      
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Fetch Remote Branches
+        run: git fetch --all
+
+      - name: Get Timestamp
+        id: timestamp
+        run: |
+          echo "::set-output name=timestamp::$(date +'%Y_%m_%d_%H_%M_%S')"
+      
+      - name: Create Release Branch
+        run: |
+          timestamp=$(echo "${{ steps.timestamp.outputs.timestamp }}")
+          git checkout -b release-branch-$timestamp
+          git push origin release-branch-$timestamp
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: "18"
+
+      - name: Install global Angular CLI
+        run: npm install -g @angular/cli @angular/compiler-cli typescript
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build the project
+        run: npm run build
+
+      - name: Verify build result in Release Branch
+        run: |
+          if [ $? -eq 0 ]; then
+            echo "Build successful in release branch. Merging to main."
+          else
+            echo "Build failed in release branch. Exiting."
+            exit 1
+          fi
+
+      - name: Merge Release Branch into Main
+        run: |
+          git checkout main
+          git pull origin main
+          timestamp=$(echo "${{ steps.timestamp.outputs.timestamp }}")
+          git merge --allow-unrelated-histories --strategy=recursive --strategy-option=theirs release-branch-$timestamp
+          git push origin main
